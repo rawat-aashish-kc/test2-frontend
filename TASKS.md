@@ -3,11 +3,11 @@
 ## Requirements checklist
 
 Admin portal
-- [ ] Add/manage stores
-- [ ] Add/manage products
-- [ ] Manage inventory per store/product
-- [ ] Configure product quantity discounts (min qty + %)
-- [ ] Configure platform/order discounts (min amount + %)
+- [x] Add/manage stores
+- [x] Add/manage products
+- [x] Manage inventory per store/product
+- [x] Configure product quantity discounts (min qty + %)
+- [x] Configure platform/order discounts (min amount + %)
 - [ ] View customer orders
 
 Customer portal
@@ -65,7 +65,7 @@ nothing is left anywhere — no oversell (row lock on inventory).
 ## Slices (~5–8 min each, riskiest first, commit after each)
 
 Backend core logic (no HTTP yet — pure PHP/unit-testable, riskiest)
-1. [ ] Migrations + models for all tables in SCHEMA.md. Done when: `php artisan migrate` runs clean.
+1. [x] Migrations + models for all tables in SCHEMA.md. Done when: `php artisan migrate` runs clean.
 2. [x] `DiscountCalculator` service: given cart lines + active discount rules, returns
    {discount_type, discount_amount, per-line discounts} per the CONTRACT.md rule. Done when:
    unit tests for all 4 discount test cases above pass.
@@ -74,20 +74,20 @@ Backend core logic (no HTTP yet — pure PHP/unit-testable, riskiest)
    multi-store-split and insufficient-stock cases above pass.
 
 Auth
-4. [ ] Sanctum install + config. Register/login/logout/me endpoints, role on user. Done when:
+4. [x] Sanctum install + config. Register/login/logout/me endpoints, role on user. Done when:
    curl register→login→me round-trip returns a working token for a customer.
-5. [ ] Admin seeder (1 admin) + demo data seeder (stores, products, inventory, discounts).
+5. [x] Admin seeder (1 admin) + demo data seeder (stores, products, inventory, discounts).
    Done when: `php artisan db:seed` prints admin email/password and creates enough demo data
    to place a real order.
-6. [ ] Role middleware (`role:admin`, `role:customer`) wired onto route groups. Done when: a
+6. [x] Role middleware (`role:admin`, `role:customer`) wired onto route groups. Done when: a
    customer token hitting an `/admin/*` route gets 403.
 
 Admin CRUD
-7. [ ] Store CRUD endpoints. Done when: create/list/update/deactivate all verified via curl.
-8. [ ] Product CRUD endpoints. Done when: same, via curl.
-9. [ ] Inventory upsert + list-per-store endpoints. Done when: set + read quantity via curl.
-10. [ ] Product discount CRUD endpoints. Done when: create/list/update/deactivate via curl.
-11. [ ] Platform discount CRUD endpoints. Done when: create/list/update/deactivate via curl.
+7. [x] Store CRUD endpoints. Done when: create/list/update/deactivate all verified via curl.
+8. [x] Product CRUD endpoints. Done when: same, via curl.
+9. [x] Inventory upsert + list-per-store endpoints. Done when: set + read quantity via curl.
+10. [x] Product discount CRUD endpoints. Done when: create/list/update/deactivate via curl.
+11. [x] Platform discount CRUD endpoints. Done when: create/list/update/deactivate via curl.
 12. [ ] Admin order list/detail endpoints. Done when: seeded order (created in slice 15)
     shows up with correct items/allocations via curl.
 
