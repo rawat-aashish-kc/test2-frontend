@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { api, ApiError } from '../../api/client'
 import type { InventoryRow, Product, Store } from '../../api/types'
 import { ErrorBanner } from '../../components/ErrorBanner'
+import { QuantityStepper } from '../../components/QuantityStepper'
 
 export function AdminInventoryPage() {
   const [stores, setStores] = useState<Store[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [storeId, setStoreId] = useState<number | null>(null)
   const [inventory, setInventory] = useState<InventoryRow[]>([])
-  const [quantities, setQuantities] = useState<Record<number, string>>({})
+  const [quantities, setQuantities] = useState<Record<number, number>>({})
   const [error, setError] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<number | null>(null)
 
@@ -32,7 +33,7 @@ export function AdminInventoryPage() {
       .get<InventoryRow[]>(`/admin/stores/${storeId}/inventory`)
       .then((rows) => {
         setInventory(rows)
-        setQuantities(Object.fromEntries(rows.map((row) => [row.product_id, String(row.quantity)])))
+        setQuantities(Object.fromEntries(rows.map((row) => [row.product_id, row.quantity])))
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Server error, please try again'))
   }, [storeId])
@@ -43,7 +44,7 @@ export function AdminInventoryPage() {
     }
     setError(null)
     setSavingId(productId)
-    const quantity = Math.max(0, Number(quantities[productId] ?? 0))
+    const quantity = quantities[productId] ?? 0
     try {
       await api.put(`/admin/stores/${storeId}/inventory/${productId}`, { quantity })
       setInventory((prev) => {
@@ -97,12 +98,10 @@ export function AdminInventoryPage() {
                   {product.name} {quantityByProduct[product.id] === undefined && <span className="badge">not stocked</span>}
                 </td>
                 <td>
-                  <input
-                    type="number"
+                  <QuantityStepper
+                    value={quantities[product.id] ?? 0}
                     min={0}
-                    style={{ width: '5rem' }}
-                    value={quantities[product.id] ?? '0'}
-                    onChange={(e) => setQuantities((prev) => ({ ...prev, [product.id]: e.target.value }))}
+                    onChange={(quantity) => setQuantities((prev) => ({ ...prev, [product.id]: quantity }))}
                   />
                 </td>
                 <td>

@@ -3,30 +3,44 @@ import { useNavigate } from 'react-router-dom'
 import { api, ApiError } from '../../api/client'
 import type { Cart, OrderDetail } from '../../api/types'
 import { ErrorBanner } from '../../components/ErrorBanner'
+import { QuantityStepper } from '../../components/QuantityStepper'
 import { money } from '../../lib/format'
+
+function quantitiesFromCart(cart: Cart): Record<number, number> {
+  return Object.fromEntries(cart.items.map((item) => [item.product_id, item.quantity]))
+}
 
 export function CartPage() {
   const [cart, setCart] = useState<Cart | null>(null)
+  const [quantities, setQuantities] = useState<Record<number, number>>({})
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [savingId, setSavingId] = useState<number | null>(null)
   const navigate = useNavigate()
 
   function load() {
     api
       .get<Cart>('/cart')
-      .then(setCart)
+      .then((data) => {
+        setCart(data)
+        setQuantities(quantitiesFromCart(data))
+      })
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Server error, please try again'))
   }
 
   useEffect(load, [])
 
-  async function updateQuantity(productId: number, quantity: number) {
+  async function saveQuantity(productId: number) {
     setError(null)
+    setSavingId(productId)
     try {
-      const updated = await api.put<Cart>(`/cart/items/${productId}`, { quantity })
+      const updated = await api.put<Cart>(`/cart/items/${productId}`, { quantity: quantities[productId] })
       setCart(updated)
+      setQuantities(quantitiesFromCart(updated))
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Server error, please try again')
+    } finally {
+      setSavingId(null)
     }
   }
 
@@ -35,6 +49,7 @@ export function CartPage() {
     try {
       const updated = await api.delete<Cart>(`/cart/items/${productId}`)
       setCart(updated)
+      setQuantities(quantitiesFromCart(updated))
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Server error, please try again')
     }
@@ -77,32 +92,39 @@ export function CartPage() {
                 </tr>
               </thead>
               <tbody>
-                {cart.items.map((item) => (
-                  <tr key={item.product_id}>
-                    <td>{item.product_name}</td>
-                    <td>{money(item.unit_price)}</td>
-                    <td>
-                      <input
-                        type="number"
-                        min={1}
-                        defaultValue={item.quantity}
-                        style={{ width: '4rem' }}
-                        onBlur={(e) => {
-                          const quantity = Math.max(1, Number(e.target.value))
-                          if (quantity !== item.quantity) {
-                            updateQuantity(item.product_id, quantity)
+                {cart.items.map((item) => {
+                  const pendingQuantity = quantities[item.product_id] ?? item.quantity
+                  const dirty = pendingQuantity !== item.quantity
+                  return (
+                    <tr key={item.product_id}>
+                      <td>{item.product_name}</td>
+                      <td>{money(item.unit_price)}</td>
+                      <td>
+                        <QuantityStepper
+                          value={pendingQuantity}
+                          min={1}
+                          onChange={(quantity) =>
+                            setQuantities((prev) => ({ ...prev, [item.product_id]: quantity }))
                           }
-                        }}
-                      />
-                    </td>
-                    <td>{money(item.line_subtotal)}</td>
-                    <td>
-                      <button type="button" className="secondary small" onClick={() => removeItem(item.product_id)}>
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        />
+                      </td>
+                      <td>{money(item.line_subtotal)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="secondary small"
+                          disabled={!dirty || savingId === item.product_id}
+                          onClick={() => saveQuantity(item.product_id)}
+                        >
+                          {savingId === item.product_id ? 'Saving…' : 'Save'}
+                        </button>{' '}
+                        <button type="button" className="secondary small" onClick={() => removeItem(item.product_id)}>
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
 

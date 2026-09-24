@@ -7,8 +7,8 @@
 ## Logins
 | Role | Email | Password |
 |---|---|---|
-| Admin | admin@example.com | password |
-| Customer | customer@example.com | password |
+| Admin | admin@gmail.com | password |
+| Customer | customer@gmail.com | password |
 
 Admin portal: http://localhost:5173/admin
 Customer portal: http://localhost:5173/products

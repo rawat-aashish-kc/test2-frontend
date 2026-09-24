@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, ApiError } from '../../api/client'
 import type { Cart, CustomerProduct } from '../../api/types'
 import { ErrorBanner } from '../../components/ErrorBanner'
+import { QuantityStepper } from '../../components/QuantityStepper'
 import { money } from '../../lib/format'
 
 export function ProductsPage() {
@@ -89,19 +90,12 @@ export function ProductsPage() {
                 </span>
               )}
               <div className="form-inline">
-                <input
-                  type="number"
-                  min={1}
-                  max={remaining || 1}
+                <QuantityStepper
                   value={quantityFor(product)}
+                  min={1}
+                  max={Math.max(remaining, 1)}
                   disabled={cannotAddMore}
-                  onChange={(e) =>
-                    setQuantities((prev) => ({
-                      ...prev,
-                      [product.id]: Math.min(Math.max(1, Number(e.target.value)), Math.max(remaining, 1)),
-                    }))
-                  }
-                  style={{ width: '4.5rem' }}
+                  onChange={(quantity) => setQuantities((prev) => ({ ...prev, [product.id]: quantity }))}
                 />
                 <button type="button" disabled={cannotAddMore || addingId === product.id} onClick={() => addToCart(product)}>
                   {addingId === product.id ? 'Adding…' : cannotAddMore ? 'All in cart' : 'Add to cart'}
