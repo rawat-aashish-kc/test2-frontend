@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { api, ApiError } from '../../api/client'
-import type { InventoryRow, Product, Store } from '../../api/types'
+import type { InventoryRow, InventorySummaryRow, Product, Store } from '../../api/types'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { QuantityStepper } from '../../components/QuantityStepper'
 
@@ -13,6 +13,11 @@ export function AdminInventoryPage() {
   const [error, setError] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<number | null>(null)
 
+  const [summary, setSummary] = useState<InventorySummaryRow[] | null>(null)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [summarySearch, setSummarySearch] = useState('')
+  const [expandedProductIds, setExpandedProductIds] = useState<Set<number>>(new Set())
+
   useEffect(() => {
     Promise.all([api.get<Store[]>('/admin/stores'), api.get<Product[]>('/admin/products')])
       .then(([storesData, productsData]) => {
@@ -23,7 +28,26 @@ export function AdminInventoryPage() {
         }
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Server error, please try again'))
+
+    api
+      .get<InventorySummaryRow[]>('/admin/inventory/summary')
+      .then(setSummary)
+      .catch((err) => setSummaryError(err instanceof ApiError ? err.message : 'Server error, please try again'))
   }, [])
+
+  function toggleExpanded(productId: number) {
+    setExpandedProductIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(productId)) {
+        next.delete(productId)
+      } else {
+        next.add(productId)
+      }
+      return next
+    })
+  }
+
+  const filteredSummary = summary?.filter((row) => row.product_name.toLowerCase().includes(summarySearch.trim().toLowerCase()))
 
   useEffect(() => {
     if (storeId === null) {
@@ -111,6 +135,79 @@ export function AdminInventoryPage() {
                 </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card">
+        <h2>Total inventory across all stores</h2>
+        <ErrorBanner message={summaryError} />
+        <div className="form-row" style={{ maxWidth: 320 }}>
+          <label htmlFor="summary-search">Search by product name</label>
+          <input
+            id="summary-search"
+            value={summarySearch}
+            onChange={(e) => setSummarySearch(e.target.value)}
+            placeholder="e.g. keyboard"
+          />
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Total quantity</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredSummary?.map((row) => {
+              const expanded = expandedProductIds.has(row.product_id)
+              return (
+                <Fragment key={row.product_id}>
+                  <tr>
+                    <td>{row.product_name}</td>
+                    <td>{row.total_quantity}</td>
+                    <td>
+                      {row.stores.length > 0 && (
+                        <button type="button" className="secondary small" onClick={() => toggleExpanded(row.product_id)}>
+                          {expanded ? 'Hide stores' : 'Show stores'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                  {expanded && (
+                    <tr>
+                      <td colSpan={3}>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Store</th>
+                              <th>Quantity</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {row.stores.map((store) => (
+                              <tr key={store.store_id}>
+                                <td>{store.store_name}</td>
+                                <td>{store.quantity}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
+            {filteredSummary?.length === 0 && (
+              <tr>
+                <td colSpan={3} className="empty-state">
+                  No products match "{summarySearch}".
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

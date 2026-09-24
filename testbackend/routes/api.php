@@ -26,6 +26,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::apiResource('stores', StoreController::class);
     Route::apiResource('products', AdminProductController::class);
 
+    Route::get('inventory/summary', [InventoryController::class, 'summary']);
     Route::get('stores/{store}/inventory', [InventoryController::class, 'index']);
     Route::put('stores/{store}/inventory/{product}', [InventoryController::class, 'update']);
 

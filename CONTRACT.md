@@ -41,6 +41,11 @@ Body: `{email, password}`
 - GET `/admin/stores/{store}/inventory` → 200 `{data:[{product_id, product_name, quantity}]}`
 - PUT `/admin/stores/{store}/inventory/{product}` Body `{quantity}` (upsert row) → 200 `{data:{product_id, quantity}}`
   - 422 if `quantity < 0`
+- GET `/admin/inventory/summary` → 200 `{data:[{product_id, product_name, total_quantity, stores:[{store_id, store_name, quantity}]}]}`
+  (read-only; every product listed, `total_quantity` = sum of `quantity` across all stores,
+  0 and `stores: []` if none; `stores` omits rows with 0/no inventory row, not a per-store
+  breakdown of every store — just the ones actually stocking it. One aggregating query, no
+  per-product loop.)
 
 ## Admin — Product discounts (`/admin/products/{product}/discounts`, auth + role:admin)
 - GET `/admin/products/{product}/discounts` → 200 `{data:[{id,min_quantity,discount_percent,is_active}]}`

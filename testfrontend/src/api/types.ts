@@ -47,6 +47,19 @@ export interface InventoryRow {
   quantity: number
 }
 
+export interface InventorySummaryStore {
+  store_id: number
+  store_name: string
+  quantity: number
+}
+
+export interface InventorySummaryRow {
+  product_id: number
+  product_name: string
+  total_quantity: number
+  stores: InventorySummaryStore[]
+}
+
 export interface ProductDiscount {
   id: number
   product_id: number
