@@ -2,12 +2,20 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../../api/client'
 import type { Store } from '../../api/types'
 import { ErrorBanner } from '../../components/ErrorBanner'
+import { LocationPicker } from '../../components/LocationPicker'
 
-const emptyForm = { name: '', address: '', lat: '', lng: '' }
+interface StoreForm {
+  name: string
+  address: string
+  lat: number | null
+  lng: number | null
+}
+
+const emptyForm: StoreForm = { name: '', address: '', lat: null, lng: null }
 
 export function AdminStoresPage() {
   const [stores, setStores] = useState<Store[] | null>(null)
-  const [form, setForm] = useState(emptyForm)
+  const [form, setForm] = useState<StoreForm>(emptyForm)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -23,7 +31,7 @@ export function AdminStoresPage() {
 
   function startEdit(store: Store) {
     setEditingId(store.id)
-    setForm({ name: store.name, address: store.address, lat: String(store.lat), lng: String(store.lng) })
+    setForm({ name: store.name, address: store.address, lat: store.lat, lng: store.lng })
   }
 
   function cancelEdit() {
@@ -34,8 +42,12 @@ export function AdminStoresPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+    if (form.lat === null || form.lng === null) {
+      setError('Pick the store location on the map')
+      return
+    }
     setSubmitting(true)
-    const payload = { name: form.name, address: form.address, lat: Number(form.lat), lng: Number(form.lng) }
+    const payload = { name: form.name, address: form.address, lat: form.lat, lng: form.lng }
     try {
       if (editingId) {
         await api.put(`/admin/stores/${editingId}`, payload)
@@ -73,38 +85,15 @@ export function AdminStoresPage() {
             <label htmlFor="name">Name</label>
             <input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
           </div>
-          <div className="form-row">
-            <label htmlFor="address">Address</label>
-            <input
-              id="address"
-              value={form.address}
-              onChange={(e) => setForm({ ...form, address: e.target.value })}
-              required
-            />
-          </div>
-          <div className="form-inline">
-            <div className="form-row">
-              <label htmlFor="lat">Latitude</label>
-              <input
-                id="lat"
-                type="number"
-                step="any"
-                value={form.lat}
-                onChange={(e) => setForm({ ...form, lat: e.target.value })}
-                required
-              />
-            </div>
-            <div className="form-row">
-              <label htmlFor="lng">Longitude</label>
-              <input
-                id="lng"
-                type="number"
-                step="any"
-                value={form.lng}
-                onChange={(e) => setForm({ ...form, lng: e.target.value })}
-                required
-              />
-            </div>
+
+          <LocationPicker
+            address={form.address}
+            lat={form.lat}
+            lng={form.lng}
+            onChange={(location) => setForm({ ...form, ...location })}
+          />
+
+          <div className="form-inline" style={{ marginTop: '1rem' }}>
             <button type="submit" disabled={submitting}>
               {editingId ? 'Update store' : 'Create store'}
             </button>

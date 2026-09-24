@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { ApiError } from '../api/client'
 import { ErrorBanner } from '../components/ErrorBanner'
+import { LocationPicker } from '../components/LocationPicker'
 
 export function RegisterPage() {
   const { register } = useAuth()
@@ -12,14 +13,18 @@ export function RegisterPage() {
   const [password, setPassword] = useState('')
   const [passwordConfirmation, setPasswordConfirmation] = useState('')
   const [address, setAddress] = useState('')
-  const [lat, setLat] = useState('0')
-  const [lng, setLng] = useState('0')
+  const [lat, setLat] = useState<number | null>(null)
+  const [lng, setLng] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+    if (lat === null || lng === null) {
+      setError('Pick your delivery location on the map')
+      return
+    }
     setSubmitting(true)
     try {
       await register({
@@ -28,8 +33,8 @@ export function RegisterPage() {
         password,
         password_confirmation: passwordConfirmation,
         address,
-        lat: Number(lat),
-        lng: Number(lng),
+        lat,
+        lng,
       })
       navigate('/products')
     } catch (err) {
@@ -74,21 +79,19 @@ export function RegisterPage() {
               required
             />
           </div>
-          <div className="form-row">
-            <label htmlFor="address">Delivery address</label>
-            <input id="address" value={address} onChange={(e) => setAddress(e.target.value)} required />
-          </div>
-          <div className="form-inline">
-            <div className="form-row">
-              <label htmlFor="lat">Latitude</label>
-              <input id="lat" type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} required />
-            </div>
-            <div className="form-row">
-              <label htmlFor="lng">Longitude</label>
-              <input id="lng" type="number" step="any" value={lng} onChange={(e) => setLng(e.target.value)} required />
-            </div>
-          </div>
-          <button type="submit" disabled={submitting}>
+
+          <LocationPicker
+            address={address}
+            lat={lat}
+            lng={lng}
+            onChange={(location) => {
+              setAddress(location.address)
+              setLat(location.lat)
+              setLng(location.lng)
+            }}
+          />
+
+          <button type="submit" disabled={submitting} style={{ marginTop: '1rem' }}>
             {submitting ? 'Creating account…' : 'Create account'}
           </button>
         </form>
