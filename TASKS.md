@@ -8,16 +8,16 @@ Admin portal
 - [x] Manage inventory per store/product
 - [x] Configure product quantity discounts (min qty + %)
 - [x] Configure platform/order discounts (min amount + %)
-- [ ] View customer orders
+- [x] View customer orders
 
 Customer portal
-- [ ] Register + login
-- [ ] View available products
-- [ ] Select quantity
-- [ ] Add to cart
-- [ ] View cart + applicable discount
-- [ ] Place order
-- [ ] View own orders
+- [x] Register + login
+- [x] View available products
+- [x] Select quantity
+- [x] Add to cart
+- [x] View cart + applicable discount
+- [x] Place order
+- [x] View own orders
 
 Inventory rules
 - [x] Same product in multiple stores
@@ -103,28 +103,28 @@ Customer flow
     different customer gets 404 on someone else's order id.
 
 Frontend — shared
-17. [ ] `react-router-dom` + API client (base URL, token header, unwraps
+17. [x] `react-router-dom` + API client (base URL, token header, unwraps
     `{data,message}`/shows `message` on error) + auth context. Done when: login persists
     token and redirects by role.
 
 Frontend — customer portal
-18. [ ] Register/login pages. Done when: new account can log in through the UI.
-19. [ ] Product list page (qty selector, add to cart, disabled when out of stock). Done when:
+18. [x] Register/login pages. Done when: new account can log in through the UI.
+19. [x] Product list page (qty selector, add to cart, disabled when out of stock). Done when:
     adding a product updates cart count in the UI.
-20. [ ] Cart page (quantity edit/remove, shows subtotal/discount/total from the API). Done
+20. [x] Cart page (quantity edit/remove, shows subtotal/discount/total from the API). Done
     when: the discount test cases are visibly correct in the UI.
-21. [ ] Place order + order confirmation. Done when: placing an order empties the cart and
+21. [x] Place order + order confirmation. Done when: placing an order empties the cart and
     shows the new order.
-22. [ ] Customer order list/detail pages. Done when: past orders list and open with correct
+22. [x] Customer order list/detail pages. Done when: past orders list and open with correct
     per-store breakdown.
 
 Frontend — admin portal
-23. [ ] Store management page (list/create/edit/deactivate). Done when: usable end-to-end.
-24. [ ] Product management page (list/create/edit/deactivate). Done when: usable end-to-end.
-25. [ ] Inventory management page (per store, edit quantities per product). Done when:
+23. [x] Store management page (list/create/edit/deactivate). Done when: usable end-to-end.
+24. [x] Product management page (list/create/edit/deactivate). Done when: usable end-to-end.
+25. [x] Inventory management page (per store, edit quantities per product). Done when:
     usable end-to-end.
-26. [ ] Product + platform discount management pages. Done when: usable end-to-end.
-27. [ ] Admin order list/detail pages. Done when: usable end-to-end.
+26. [x] Product + platform discount management pages. Done when: usable end-to-end.
+27. [x] Admin order list/detail pages. Done when: usable end-to-end.
 
 Final
-28. [ ] Final verification pass (step 8 of CLAUDE.md pipeline).
+28. [x] Final verification pass (step 8 of CLAUDE.md pipeline).
