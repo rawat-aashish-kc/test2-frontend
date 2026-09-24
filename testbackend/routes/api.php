@@ -7,6 +7,9 @@ use App\Http\Controllers\Api\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Api\Admin\ProductDiscountController;
 use App\Http\Controllers\Api\Admin\StoreController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\ProductController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -38,5 +41,15 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
 });
 
 Route::middleware(['auth:sanctum', 'role:customer'])->group(function () {
-    //
+    Route::get('products', [ProductController::class, 'index']);
+    Route::get('products/{product}', [ProductController::class, 'show']);
+
+    Route::get('cart', [CartController::class, 'index']);
+    Route::post('cart/items', [CartController::class, 'addItem']);
+    Route::put('cart/items/{product}', [CartController::class, 'updateItem']);
+    Route::delete('cart/items/{product}', [CartController::class, 'removeItem']);
+
+    Route::get('orders', [OrderController::class, 'index']);
+    Route::post('orders', [OrderController::class, 'store']);
+    Route::get('orders/{order}', [OrderController::class, 'show']);
 });

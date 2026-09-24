@@ -20,17 +20,17 @@ Customer portal
 - [ ] View own orders
 
 Inventory rules
-- [ ] Same product in multiple stores
-- [ ] One order can span multiple stores (across different product lines)
-- [ ] Auto store selection by availability + distance
-- [ ] Prefer single store per line when possible
-- [ ] Fall back to multi-store split per line when needed
-- [ ] Inventory decremented after order placed
+- [x] Same product in multiple stores
+- [x] One order can span multiple stores (across different product lines)
+- [x] Auto store selection by availability + distance
+- [x] Prefer single store per line when possible
+- [x] Fall back to multi-store split per line when needed
+- [x] Inventory decremented after order placed
 
 Discounts
-- [ ] Product discount applies when qty meets configured minimum
-- [ ] Platform discount applies when order amount meets configured minimum
-- [ ] Product and platform discounts never combine on the same order
+- [x] Product discount applies when qty meets configured minimum
+- [x] Platform discount applies when order amount meets configured minimum
+- [x] Product and platform discounts never combine on the same order
 
 ## Concrete test cases (from the rules above)
 
@@ -88,18 +88,18 @@ Admin CRUD
 9. [x] Inventory upsert + list-per-store endpoints. Done when: set + read quantity via curl.
 10. [x] Product discount CRUD endpoints. Done when: create/list/update/deactivate via curl.
 11. [x] Platform discount CRUD endpoints. Done when: create/list/update/deactivate via curl.
-12. [ ] Admin order list/detail endpoints. Done when: seeded order (created in slice 15)
+12. [x] Admin order list/detail endpoints. Done when: seeded order (created in slice 15)
     shows up with correct items/allocations via curl.
 
 Customer flow
-13. [ ] Product list/detail endpoints (active only, available_quantity, discount_tiers).
+13. [x] Product list/detail endpoints (active only, available_quantity, discount_tiers).
     Done when: curl shows correct aggregated stock across stores.
-14. [ ] Cart endpoints (get/add/update/remove), using `DiscountCalculator` for the live
+14. [x] Cart endpoints (get/add/update/remove), using `DiscountCalculator` for the live
     preview. Done when: curl reproduces the discount test cases end-to-end through the API.
-15. [ ] Order placement endpoint: validates stock, runs `StoreAllocator` per line inside a
+15. [x] Order placement endpoint: validates stock, runs `StoreAllocator` per line inside a
     DB transaction, decrements inventory, clears cart, snapshots discount. Done when: curl
     places a real multi-store order and inventory numbers drop correctly afterward.
-16. [ ] Customer order list/detail endpoints (own orders only). Done when: curl as a
+16. [x] Customer order list/detail endpoints (own orders only). Done when: curl as a
     different customer gets 404 on someone else's order id.
 
 Frontend — shared

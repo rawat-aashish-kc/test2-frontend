@@ -37,4 +37,14 @@ class Product extends Model
     {
         return $this->discounts()->where('is_active', true)->orderBy('min_quantity');
     }
+
+    /**
+     * Total stock for this product across active stores.
+     */
+    public function availableQuantity(): int
+    {
+        return (int) $this->inventories()
+            ->whereHas('store', fn ($query) => $query->where('is_active', true))
+            ->sum('quantity');
+    }
 }
