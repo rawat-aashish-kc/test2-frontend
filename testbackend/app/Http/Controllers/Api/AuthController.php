@@ -33,7 +33,7 @@ class AuthController extends Controller
 
         $token = $user->createToken('api')->plainTextToken;
 
-        return $this->success(['token' => $token, 'user' => $user], 'Registered', 201);
+        return $this->success(['token' => $token, 'user' => $this->format($user)], 'Registered', 201);
     }
 
     public function login(LoginRequest $request): JsonResponse
@@ -48,7 +48,7 @@ class AuthController extends Controller
 
         $token = $user->createToken('api')->plainTextToken;
 
-        return $this->success(['token' => $token, 'user' => $user], 'Logged in');
+        return $this->success(['token' => $token, 'user' => $this->format($user)], 'Logged in');
     }
 
     public function logout(Request $request): JsonResponse
@@ -60,6 +60,26 @@ class AuthController extends Controller
 
     public function me(Request $request): JsonResponse
     {
-        return $this->success($request->user(), 'OK');
+        return $this->success($this->format($request->user()), 'OK');
+    }
+
+    /**
+     * Eloquent's decimal cast serializes lat/lng as strings (to preserve
+     * precision); cast them back to numbers here so the frontend never has
+     * to coerce them.
+     *
+     * @return array<string, mixed>
+     */
+    private function format(User $user): array
+    {
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'address' => $user->address,
+            'lat' => $user->lat !== null ? (float) $user->lat : null,
+            'lng' => $user->lng !== null ? (float) $user->lng : null,
+        ];
     }
 }
