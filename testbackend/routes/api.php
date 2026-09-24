@@ -48,6 +48,7 @@ Route::middleware(['auth:sanctum', 'role:customer'])->group(function () {
     Route::post('cart/items', [CartController::class, 'addItem']);
     Route::put('cart/items/{product}', [CartController::class, 'updateItem']);
     Route::delete('cart/items/{product}', [CartController::class, 'removeItem']);
+    Route::put('cart/discount-choice', [CartController::class, 'setDiscountChoice']);
 
     Route::get('orders', [OrderController::class, 'index']);
     Route::post('orders', [OrderController::class, 'store']);

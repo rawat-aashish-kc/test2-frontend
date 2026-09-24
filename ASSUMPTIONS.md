@@ -21,10 +21,14 @@ ask up front (all have a sensible default below).
    10+ → 20%), not just one. The highest `min_quantity` the cart quantity meets/exceeds wins.
    Same pattern for platform discounts (multiple `min_order_amount` tiers), highest
    qualifying tier wins.
-7. **"Cannot combine" resolution**: compute both (a) total product-quantity discount across
-   all cart lines at the chosen quantities, and (b) platform discount on the pre-discount
-   subtotal. Apply whichever amount is larger (maximizes customer benefit); the other is not
-   applied. Ties favor the product discount (it's line-specific and already "earned").
+7. **"Cannot combine" resolution** (revised by CR-TASKS.md, 2026-09-24 — was: always
+   auto-pick the larger amount): compute both (a) total product-quantity discount across
+   all cart lines, and (b) platform discount on the pre-discount subtotal. If only one is
+   > 0, it applies automatically. If both are > 0, the **customer picks** which one via
+   `PUT /cart/discount-choice` — the picker only shows when there's an actual choice to
+   make. Until they pick, the larger amount is used as the default (old behavior becomes
+   just the starting point); ties still favor product. The choice persists on the cart and
+   resets when the cart is emptied by placing an order.
 8. **Cart** is persisted server-side (`carts`/`cart_items`), one open cart per customer, so a
    page refresh doesn't lose it and discount preview is always server-computed (never
    trust client-side totals).

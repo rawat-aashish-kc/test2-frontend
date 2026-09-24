@@ -135,6 +135,7 @@ class OrderController extends Controller
                 }
 
                 $cart->items()->delete();
+                $cart->update(['discount_choice' => null]);
 
                 return $order;
             });

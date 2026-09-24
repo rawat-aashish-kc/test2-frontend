@@ -50,6 +50,8 @@ for audit/display, not recomputed).
 
 ## carts
 - `user_id` FK → users, cascade delete, unique (one cart per customer)
+- `discount_choice` enum('product','platform'), nullable — customer's pick when both
+  discounts qualify (CR-TASKS.md); cleared when the cart is emptied by an order
 
 ## cart_items
 - `cart_id` FK → carts, cascade delete

@@ -66,14 +66,21 @@ Body: `{email, password}`
 - GET `/products/{id}` → 200 `{data:product}` (same shape) / 404
 
 ## Customer — Cart (`/cart`, auth + role:customer)
-- GET `/cart` → 200 `{data:{items:[{product_id, product_name, unit_price, quantity, line_subtotal}], subtotal, discount_type, discount_amount, total}}`
-  (discount is always recomputed server-side, live, per current cart contents — see rule below)
+- GET `/cart` → 200 `{data:{items:[{product_id, product_name, unit_price, quantity, line_subtotal}], subtotal, discount_type, discount_amount, total, discount_options:{product:{available,amount}, platform:{available,amount}}}}`
+  (discount is always recomputed server-side, live, per current cart contents — see rule below.
+  `discount_options` tells the frontend whether a picker is needed: a picker only makes sense
+  when both `.available` are true)
 - POST `/cart/items` Body `{product_id, quantity}` → adds, or increases quantity if line exists → 200 `{data: <cart, same shape as GET>}`
   - 422 `{message:"Only 5 in stock for Widget"}` if `quantity` exceeds `available_quantity`
   - 422 if `quantity < 1`
 - PUT `/cart/items/{product_id}` Body `{quantity}` → sets exact quantity → 200 `{data:<cart>}`
   - same stock-limit 422 as above
 - DELETE `/cart/items/{product_id}` → 200 `{data:<cart>}`
+- PUT `/cart/discount-choice` Body `{discount_type: "product"|"platform"}` → stores the customer's
+  choice on the cart, only meaningful (and only offered by the UI) when both
+  `discount_options.product.available` and `.platform.available` are true → 200 `{data:<cart>}`
+  - 422 `{message:"The platform discount is not currently available for this cart"}` if the
+    chosen type isn't actually available right now (cart changed since the options were fetched)
 
 ## Customer — Orders (`/orders`, auth + role:customer)
 - POST `/orders` → places order from the customer's current cart, using the customer's
@@ -87,16 +94,26 @@ Body: `{email, password}`
 - GET `/orders` → 200 `{data:[{id, subtotal, discount_type, discount_amount, total, status, created_at}]}` (own orders only)
 - GET `/orders/{id}` → 200 `{data:{...order, items:[{product_name, unit_price, quantity, line_subtotal, line_discount_amount, allocations:[{store_name, quantity, distance_km}]}]}}` (own order only) / 404 if not owner or doesn't exist
 
-## Discount calculation rule (applies in GET/POST /cart and POST /orders — must match exactly)
+## Discount calculation rule (applies in GET/POST/PUT/DELETE /cart/* and POST /orders — must match exactly)
 1. `product_discount_total` = for each cart line, find the product's active discount tier
    with the highest `min_quantity` ≤ line quantity; if found, `line_discount = unit_price *
    quantity * discount_percent / 100`; sum across lines.
 2. `platform_discount_total` = find the active platform-discount tier with the highest
    `min_order_amount` ≤ `subtotal` (pre-discount); if found, `= subtotal * discount_percent / 100`.
-3. If both are 0 → `discount_type = "none"`, `discount_amount = 0`.
-   Else if `product_discount_total >= platform_discount_total` → `discount_type = "product"`,
-   `discount_amount = product_discount_total`, each line's `line_discount_amount` as computed
-   in step 1, platform discount not applied.
-   Else → `discount_type = "platform"`, `discount_amount = platform_discount_total`,
-   all `line_discount_amount = 0`.
-4. `total = subtotal - discount_amount`.
+3. Resolve which one applies (never both — product and platform discounts never combine):
+   - Neither total is > 0 → `discount_type = "none"`, `discount_amount = 0`.
+   - Only one total is > 0 → that one applies automatically (nothing for the customer to
+     choose — there's only one option).
+   - Both totals are > 0 → this is a customer choice. Use the cart's stored
+     `discount_choice` (set via `PUT /cart/discount-choice`) if it's `"product"` or
+     `"platform"`; otherwise default to whichever total is larger (ties favor `"product"`).
+     This default is just a starting point — the customer can change it any time via
+     `PUT /cart/discount-choice` and it sticks until they change it again or the cart is
+     emptied by placing an order (which also clears the stored choice).
+4. When `discount_type = "product"`, each line's `line_discount_amount` is its own tier
+   discount from step 1; when `"platform"` or `"none"`, every line's `line_discount_amount`
+   is 0.
+5. `total = subtotal - discount_amount`.
+6. `discount_options.product.available` / `.platform.available` = whether that total is > 0
+   (i.e. whether picking it would do anything) — this is what the cart response uses to
+   decide whether to show a picker at all.

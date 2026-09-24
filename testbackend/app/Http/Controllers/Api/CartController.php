@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\AddCartItemRequest;
+use App\Http\Requests\Api\SetCartDiscountChoiceRequest;
 use App\Http\Requests\Api\UpdateCartItemRequest;
 use App\Models\Cart;
 use App\Models\CartItem;
@@ -62,6 +63,25 @@ class CartController extends Controller
         return $this->success($this->priceCart($cart), 'Removed from cart');
     }
 
+    /**
+     * Customer picks which discount to use, when both a product and a
+     * platform discount are available (see DiscountCalculator::resolve()).
+     */
+    public function setDiscountChoice(SetCartDiscountChoiceRequest $request): JsonResponse
+    {
+        $cart = $this->cartFor($request);
+        $type = $request->validated('discount_type');
+
+        $priced = CartPricer::price($cart);
+        if (! $priced['discount_options'][$type]['available']) {
+            return $this->error("The {$type} discount is not currently available for this cart", 422);
+        }
+
+        $cart->update(['discount_choice' => $type]);
+
+        return $this->success($this->priceCart($cart), 'Discount updated');
+    }
+
     private function cartFor(Request $request): Cart
     {
         return Cart::firstOrCreate(['user_id' => $request->user()->id]);
@@ -104,6 +124,7 @@ class CartController extends Controller
             'discount_type' => $priced['discount_type'],
             'discount_amount' => $priced['discount_amount'],
             'total' => $priced['total'],
+            'discount_options' => $priced['discount_options'],
         ];
     }
 }

@@ -2,6 +2,8 @@
 
 use App\Services\DiscountCalculator;
 
+// --- calculate(): raw totals, no winner picked ---
+
 test('product discount applies when quantity meets a single tier', function () {
     $result = DiscountCalculator::calculate(
         lines: [['product_id' => 1, 'unit_price' => 10.0, 'quantity' => 5]],
@@ -10,10 +12,9 @@ test('product discount applies when quantity meets a single tier', function () {
     );
 
     expect($result['subtotal'])->toBe(50.0)
-        ->and($result['discount_type'])->toBe('product')
-        ->and($result['discount_amount'])->toBe(5.0)
-        ->and($result['total'])->toBe(45.0)
-        ->and($result['lines'][0]['line_discount_amount'])->toBe(5.0);
+        ->and($result['product_discount_total'])->toBe(5.0)
+        ->and($result['platform_discount_total'])->toBe(0.0)
+        ->and($result['lines'][0]['product_line_discount'])->toBe(5.0);
 });
 
 test('product discount does not apply below the minimum quantity', function () {
@@ -23,9 +24,7 @@ test('product discount does not apply below the minimum quantity', function () {
         platformDiscountTiers: [],
     );
 
-    expect($result['discount_type'])->toBe('none')
-        ->and($result['discount_amount'])->toBe(0.0)
-        ->and($result['total'])->toBe(40.0);
+    expect($result['product_discount_total'])->toBe(0.0);
 });
 
 test('highest qualifying product discount tier wins, not both', function () {
@@ -39,14 +38,14 @@ test('highest qualifying product discount tier wins, not both', function () {
         productDiscountTiers: $tiers,
         platformDiscountTiers: [],
     );
-    expect($sevenUnits['discount_amount'])->toBe(7.0); // 7 * 10 * 10%
+    expect($sevenUnits['product_discount_total'])->toBe(7.0); // 7 * 10 * 10%
 
     $twelveUnits = DiscountCalculator::calculate(
         lines: [['product_id' => 1, 'unit_price' => 10.0, 'quantity' => 12]],
         productDiscountTiers: $tiers,
         platformDiscountTiers: [],
     );
-    expect($twelveUnits['discount_amount'])->toBe(24.0); // 12 * 10 * 20%, not stacked with the 10% tier
+    expect($twelveUnits['product_discount_total'])->toBe(24.0); // 12 * 10 * 20%, not stacked with the 10% tier
 });
 
 test('platform discount applies when order subtotal meets the minimum', function () {
@@ -57,10 +56,8 @@ test('platform discount applies when order subtotal meets the minimum', function
     );
 
     expect($result['subtotal'])->toBe(120.0)
-        ->and($result['discount_type'])->toBe('platform')
-        ->and($result['discount_amount'])->toBe(18.0)
-        ->and($result['total'])->toBe(102.0)
-        ->and($result['lines'][0]['line_discount_amount'])->toBe(0.0);
+        ->and($result['platform_discount_total'])->toBe(18.0)
+        ->and($result['product_discount_total'])->toBe(0.0);
 });
 
 test('platform discount does not apply below the minimum order amount', function () {
@@ -70,33 +67,7 @@ test('platform discount does not apply below the minimum order amount', function
         platformDiscountTiers: [['min_order_amount' => 100.0, 'discount_percent' => 15.0]],
     );
 
-    expect($result['discount_type'])->toBe('none')
-        ->and($result['discount_amount'])->toBe(0.0);
-});
-
-test('product and platform discounts never combine, the larger one wins', function () {
-    // Line qualifies for an $8 product discount; subtotal also qualifies for a $15 platform discount.
-    $result = DiscountCalculator::calculate(
-        lines: [['product_id' => 1, 'unit_price' => 20.0, 'quantity' => 8]], // subtotal 160, product tier 5% = 8
-        productDiscountTiers: [1 => [['min_quantity' => 5, 'discount_percent' => 5.0]]],
-        platformDiscountTiers: [['min_order_amount' => 100.0, 'discount_percent' => 9.375]], // 160 * 9.375% = 15
-    );
-
-    expect($result['discount_type'])->toBe('platform')
-        ->and($result['discount_amount'])->toBe(15.0)
-        ->and($result['lines'][0]['line_discount_amount'])->toBe(0.0)
-        ->and($result['total'])->toBe(145.0);
-});
-
-test('ties favor the product discount', function () {
-    $result = DiscountCalculator::calculate(
-        lines: [['product_id' => 1, 'unit_price' => 10.0, 'quantity' => 10]], // subtotal 100, product tier 10% = 10
-        productDiscountTiers: [1 => [['min_quantity' => 5, 'discount_percent' => 10.0]]],
-        platformDiscountTiers: [['min_order_amount' => 100.0, 'discount_percent' => 10.0]], // also = 10
-    );
-
-    expect($result['discount_type'])->toBe('product')
-        ->and($result['discount_amount'])->toBe(10.0);
+    expect($result['platform_discount_total'])->toBe(0.0);
 });
 
 test('multi-line cart sums line subtotals and only discounts the qualifying line', function () {
@@ -110,8 +81,62 @@ test('multi-line cart sums line subtotals and only discounts the qualifying line
     );
 
     expect($result['subtotal'])->toBe(60.0)
-        ->and($result['discount_type'])->toBe('product')
-        ->and($result['discount_amount'])->toBe(5.0)
-        ->and($result['lines'][0]['line_discount_amount'])->toBe(5.0)
-        ->and($result['lines'][1]['line_discount_amount'])->toBe(0.0);
+        ->and($result['product_discount_total'])->toBe(5.0)
+        ->and($result['lines'][0]['product_line_discount'])->toBe(5.0)
+        ->and($result['lines'][1]['product_line_discount'])->toBe(0.0);
+});
+
+// --- resolve(): which discount applies, and the customer's choice ---
+
+test('resolve: neither total qualifies -> none', function () {
+    $result = DiscountCalculator::resolve(0.0, 0.0);
+
+    expect($result['discount_type'])->toBe('none')
+        ->and($result['discount_amount'])->toBe(0.0);
+});
+
+test('resolve: only product qualifies -> applied automatically, no choice needed', function () {
+    $result = DiscountCalculator::resolve(5.0, 0.0, preference: 'platform');
+
+    // Preference is ignored: platform isn't actually available, so product wins by default.
+    expect($result['discount_type'])->toBe('product')
+        ->and($result['discount_amount'])->toBe(5.0);
+});
+
+test('resolve: only platform qualifies -> applied automatically, no choice needed', function () {
+    $result = DiscountCalculator::resolve(0.0, 18.0, preference: 'product');
+
+    expect($result['discount_type'])->toBe('platform')
+        ->and($result['discount_amount'])->toBe(18.0);
+});
+
+test('resolve: both qualify and customer chose product -> product applies even though platform is larger', function () {
+    $result = DiscountCalculator::resolve(8.0, 15.0, preference: 'product');
+
+    expect($result['discount_type'])->toBe('product')
+        ->and($result['discount_amount'])->toBe(8.0);
+});
+
+test('resolve: both qualify and customer chose platform -> platform applies even though product is larger', function () {
+    $result = DiscountCalculator::resolve(15.0, 8.0, preference: 'platform');
+
+    expect($result['discount_type'])->toBe('platform')
+        ->and($result['discount_amount'])->toBe(8.0);
+});
+
+test('resolve: both qualify, no preference yet -> defaults to the larger amount', function () {
+    expect(DiscountCalculator::resolve(8.0, 15.0, preference: null)['discount_type'])->toBe('platform');
+    expect(DiscountCalculator::resolve(15.0, 8.0, preference: null)['discount_type'])->toBe('product');
+});
+
+test('resolve: both qualify, no preference, tie favors product', function () {
+    $result = DiscountCalculator::resolve(10.0, 10.0, preference: null);
+
+    expect($result['discount_type'])->toBe('product');
+});
+
+test('resolve: both qualify but preference is invalid/stale -> falls back to the larger amount', function () {
+    $result = DiscountCalculator::resolve(8.0, 15.0, preference: 'not-a-real-choice');
+
+    expect($result['discount_type'])->toBe('platform');
 });
