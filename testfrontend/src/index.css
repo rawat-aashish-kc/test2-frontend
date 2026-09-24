@@ -289,6 +289,13 @@ button.secondary:hover {
   background: var(--color-surface-sunken);
 }
 
+button.secondary:disabled {
+  background: var(--color-surface);
+  color: var(--color-border);
+  border-color: var(--color-border);
+  cursor: not-allowed;
+}
+
 button.danger {
   background: var(--color-danger);
 }
