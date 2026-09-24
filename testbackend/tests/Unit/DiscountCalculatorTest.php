@@ -86,6 +86,36 @@ test('multi-line cart sums line subtotals and only discounts the qualifying line
         ->and($result['lines'][1]['product_line_discount'])->toBe(0.0);
 });
 
+test('two product discount tiers with the same min_quantity: the higher percent wins, not the first one defined', function () {
+    $tiers = [1 => [
+        ['min_quantity' => 5, 'discount_percent' => 10.0],
+        ['min_quantity' => 5, 'discount_percent' => 25.0], // same threshold, defined second
+    ]];
+
+    $result = DiscountCalculator::calculate(
+        lines: [['product_id' => 1, 'unit_price' => 10.0, 'quantity' => 5]],
+        productDiscountTiers: $tiers,
+        platformDiscountTiers: [],
+    );
+
+    expect($result['product_discount_total'])->toBe(12.5); // 5 * 10 * 25%, not 10%
+});
+
+test('two platform discount tiers with the same min_order_amount: the higher percent wins, not the first one defined', function () {
+    $tiers = [
+        ['min_order_amount' => 100.0, 'discount_percent' => 25.0], // same threshold, defined first
+        ['min_order_amount' => 100.0, 'discount_percent' => 10.0],
+    ];
+
+    $result = DiscountCalculator::calculate(
+        lines: [['product_id' => 1, 'unit_price' => 50.0, 'quantity' => 2]], // subtotal 100
+        productDiscountTiers: [],
+        platformDiscountTiers: $tiers,
+    );
+
+    expect($result['platform_discount_total'])->toBe(25.0); // 100 * 25%, not 10%
+});
+
 // --- resolve(): which discount applies, and the customer's choice ---
 
 test('resolve: neither total qualifies -> none', function () {

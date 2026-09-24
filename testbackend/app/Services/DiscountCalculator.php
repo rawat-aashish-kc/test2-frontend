@@ -108,7 +108,11 @@ class DiscountCalculator
     }
 
     /**
-     * Highest-threshold tier the value qualifies for ($value >= $thresholdKey).
+     * Highest-threshold tier the value qualifies for ($value >= $thresholdKey). If two
+     * qualifying tiers share the same threshold, the one with the higher discount_percent
+     * wins (not whichever happened to come first from the DB — that was a bug: two tiers
+     * with an identical min_quantity/min_order_amount used to resolve to an arbitrary
+     * "first match" instead of the more generous one).
      *
      * @param  array<int, array<string, float>>  $tiers
      */
@@ -116,7 +120,14 @@ class DiscountCalculator
     {
         $best = null;
         foreach ($tiers as $tier) {
-            if ($value >= $tier[$thresholdKey] && ($best === null || $tier[$thresholdKey] > $best[$thresholdKey])) {
+            if ($value < $tier[$thresholdKey]) {
+                continue;
+            }
+
+            if ($best === null
+                || $tier[$thresholdKey] > $best[$thresholdKey]
+                || ($tier[$thresholdKey] == $best[$thresholdKey] && $tier['discount_percent'] > $best['discount_percent'])
+            ) {
                 $best = $tier;
             }
         }
