@@ -10,12 +10,26 @@ export function CustomerOrderDetailPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  function load() {
     api
       .get<OrderDetail>(`/orders/${id}`)
       .then(setOrder)
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Server error, please try again'))
-  }, [id])
+  }
+
+  useEffect(load, [id])
+
+  async function handleReturn(orderItemId: number, quantity: number) {
+    setError(null)
+    try {
+      const updated = await api.post<OrderDetail>(`/orders/${id}/returns`, {
+        items: [{ order_item_id: orderItemId, quantity }],
+      })
+      setOrder(updated)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Server error, please try again')
+    }
+  }
 
   return (
     <div>
@@ -24,7 +38,7 @@ export function CustomerOrderDetailPage() {
       </p>
       <h1>Order #{id}</h1>
       <ErrorBanner message={error} />
-      {order && <OrderDetailView order={order} />}
+      {order && <OrderDetailView order={order} onReturn={handleReturn} />}
     </div>
   )
 }

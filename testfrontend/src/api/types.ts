@@ -92,14 +92,17 @@ export interface Cart {
 export interface OrderAllocation {
   store_name: string
   quantity: number
+  returned_quantity: number
   distance_km: number
 }
 
 export interface OrderItem {
+  id: number
   product_id: number
   product_name: string
   unit_price: number
   quantity: number
+  returned_quantity: number
   line_subtotal: number
   line_discount_amount: number
   allocations: OrderAllocation[]
@@ -112,6 +115,8 @@ export interface OrderSummary {
   discount_type: DiscountType
   discount_amount: number
   total: number
+  original_total: number
+  refund_amount: number
   status: string
   created_at: string
 }

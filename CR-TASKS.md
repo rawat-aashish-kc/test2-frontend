@@ -73,7 +73,7 @@ evaluated against the discount tiers **as they were when the order was placed** 
 
 ## Frontend work (after backend verified — new UI must match the current redesign, not the
 old styling)
-- [ ] Customer order detail page: a "Return" control per line (quantity input capped at
+- [x] Customer order detail page: a "Return" control per line (quantity input capped at
       remaining, per line), shows `refund_amount`/`original_total` after a return.
 
 ## Docs
