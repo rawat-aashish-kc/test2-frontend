@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['order_item_id', 'store_id', 'quantity', 'distance_km'])]
+#[Fillable(['order_item_id', 'store_id', 'quantity', 'returned_quantity', 'distance_km'])]
 class OrderItemAllocation extends Model
 {
     protected function casts(): array
@@ -24,5 +24,10 @@ class OrderItemAllocation extends Model
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
+    }
+
+    public function remainingQuantity(): int
+    {
+        return $this->quantity - $this->returned_quantity;
     }
 }

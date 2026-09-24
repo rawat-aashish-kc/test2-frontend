@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\ApiResponse;
 use App\Http\Controllers\Concerns\FormatsOrders;
 use App\Http\Controllers\Controller;
-use App\Models\Cart;
+use App\Http\Requests\Api\ReturnOrderRequest;
 use App\Models\Inventory;
 use App\Models\Order;
-use App\Services\CartPricer;
-use App\Services\StoreAllocator;
+use App\Models\OrderItem;
+use App\Models\OrderItemAllocation;
+use App\Services\OrderPlacer;
+use App\Services\OrderPricer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -44,111 +46,136 @@ class OrderController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $user = $request->user();
-        $cart = Cart::with('items.product')->where('user_id', $user->id)->first();
+        $lat = $request->input('lat') !== null ? (float) $request->input('lat') : null;
+        $lng = $request->input('lng') !== null ? (float) $request->input('lng') : null;
 
-        if (! $cart || $cart->items->isEmpty()) {
-            return $this->error('Cart is empty', 422);
+        $result = OrderPlacer::place($request->user(), $lat, $lng);
+
+        if ($result['error']) {
+            return $this->error($result['error'], $result['status']);
         }
 
-        $lat = (float) ($request->input('lat') ?? $user->lat);
-        $lng = (float) ($request->input('lng') ?? $user->lng);
-
-        $priced = CartPricer::price($cart);
-        $lineByProduct = collect($priced['lines'])->keyBy('product_id');
-
-        // Build (and validate) the full store-allocation plan before touching any data,
-        // so an unfulfillable line rejects the whole order with nothing written.
-        $plan = [];
-        foreach ($cart->items as $item) {
-            $storeStocks = Inventory::query()
-                ->where('product_id', $item->product_id)
-                ->where('quantity', '>', 0)
-                ->whereHas('store', fn ($query) => $query->where('is_active', true))
-                ->with('store:id,lat,lng')
-                ->get()
-                ->map(fn (Inventory $inventory) => [
-                    'store_id' => $inventory->store_id,
-                    'lat' => (float) $inventory->store->lat,
-                    'lng' => (float) $inventory->store->lng,
-                    'quantity' => $inventory->quantity,
-                ])
-                ->all();
-
-            $allocation = StoreAllocator::allocate($item->quantity, $lat, $lng, $storeStocks);
-
-            if (! $allocation['fulfilled']) {
-                return $this->error(
-                    "Only {$allocation['total_available']} of {$item->product->name} available across all stores, {$item->quantity} requested",
-                    422,
-                );
-            }
-
-            $plan[$item->product_id] = $allocation;
-        }
-
-        try {
-            $order = DB::transaction(function () use ($user, $cart, $priced, $lineByProduct, $plan, $lat, $lng) {
-                $order = Order::create([
-                    'user_id' => $user->id,
-                    'subtotal' => $priced['subtotal'],
-                    'discount_type' => $priced['discount_type'],
-                    'discount_amount' => $priced['discount_amount'],
-                    'total' => $priced['total'],
-                    'status' => 'placed',
-                    'customer_lat' => $lat,
-                    'customer_lng' => $lng,
-                ]);
-
-                foreach ($cart->items as $item) {
-                    $line = $lineByProduct[$item->product_id];
-
-                    $orderItem = $order->items()->create([
-                        'product_id' => $item->product_id,
-                        'product_name' => $item->product->name,
-                        'unit_price' => $line['unit_price'],
-                        'quantity' => $item->quantity,
-                        'line_subtotal' => $line['line_subtotal'],
-                        'line_discount_amount' => $line['line_discount_amount'],
-                    ]);
-
-                    foreach ($plan[$item->product_id]['allocations'] as $allocation) {
-                        $orderItem->allocations()->create([
-                            'store_id' => $allocation['store_id'],
-                            'quantity' => $allocation['quantity'],
-                            'distance_km' => $allocation['distance_km'],
-                        ]);
-
-                        // Re-check under a row lock: stock could have moved since the
-                        // plan was built above. If it has, roll back the whole order.
-                        $inventory = Inventory::where('store_id', $allocation['store_id'])
-                            ->where('product_id', $item->product_id)
-                            ->lockForUpdate()
-                            ->first();
-
-                        if (! $inventory || $inventory->quantity < $allocation['quantity']) {
-                            throw new RuntimeException('Inventory changed concurrently.');
-                        }
-
-                        $inventory->decrement('quantity', $allocation['quantity']);
-                    }
-                }
-
-                $cart->items()->delete();
-                $cart->update(['discount_choice' => null]);
-
-                return $order;
-            });
-        } catch (RuntimeException) {
-            return $this->error('Inventory changed while placing your order, please try again.', 409);
-        }
-
-        $order->load(['items.allocations.store']);
+        $order = $result['order']->load(['items.allocations.store']);
 
         return $this->success([
             'id' => $order->id,
             ...$this->formatOrderSummary($order),
             'items' => $this->formatOrderItems($order),
         ], 'Order placed', 201);
+    }
+
+    public function returns(ReturnOrderRequest $request, Order $order): JsonResponse
+    {
+        abort_unless($order->user_id === $request->user()->id, 404, 'Order not found.');
+
+        $requests = collect($request->validated('items'));
+        $orderItems = OrderItem::query()
+            ->where('order_id', $order->id)
+            ->whereIn('id', $requests->pluck('order_item_id'))
+            ->get()
+            ->keyBy('id');
+
+        // Validate every line before writing anything (all-or-nothing, same discipline as order placement).
+        foreach ($requests as $entry) {
+            $orderItem = $orderItems->get($entry['order_item_id']);
+            if (! $orderItem) {
+                return $this->error('That item does not belong to this order', 422);
+            }
+
+            $remaining = $orderItem->remainingQuantity();
+            if ($entry['quantity'] > $remaining) {
+                return $this->error(
+                    "Only {$remaining} of {$orderItem->product_name} remaining to return, {$entry['quantity']} requested",
+                    422,
+                );
+            }
+        }
+
+        try {
+            DB::transaction(function () use ($order, $requests, $orderItems) {
+                foreach ($requests as $entry) {
+                    $orderItem = $orderItems->get($entry['order_item_id']);
+                    $toReturn = $entry['quantity'];
+
+                    // Restock the store(s) that supplied this line, original allocation order
+                    // first, never more than each allocation actually supplied (ASSUMPTIONS.md #16).
+                    $allocations = OrderItemAllocation::where('order_item_id', $orderItem->id)
+                        ->orderBy('id')
+                        ->lockForUpdate()
+                        ->get();
+
+                    foreach ($allocations as $allocation) {
+                        if ($toReturn <= 0) {
+                            break;
+                        }
+
+                        $take = min($toReturn, $allocation->remainingQuantity());
+                        if ($take <= 0) {
+                            continue;
+                        }
+
+                        $inventory = Inventory::where('store_id', $allocation->store_id)
+                            ->where('product_id', $orderItem->product_id)
+                            ->lockForUpdate()
+                            ->first();
+
+                        if ($inventory) {
+                            $inventory->increment('quantity', $take);
+                        } else {
+                            Inventory::create([
+                                'store_id' => $allocation->store_id,
+                                'product_id' => $orderItem->product_id,
+                                'quantity' => $take,
+                            ]);
+                        }
+
+                        $allocation->increment('returned_quantity', $take);
+                        $toReturn -= $take;
+                    }
+
+                    if ($toReturn > 0) {
+                        // Pre-validated above; only reachable if concurrent requests raced past it.
+                        throw new RuntimeException('Inventory changed concurrently.');
+                    }
+
+                    $orderItem->increment('returned_quantity', $entry['quantity']);
+                }
+
+                // Recalculate the whole order from its remaining quantities (not just the
+                // lines touched by this request), per CONTRACT.md's Order recalculation rule.
+                $priced = OrderPricer::price($order);
+                $lineByOrderItem = collect($priced['lines'])->keyBy('order_item_id');
+
+                foreach (OrderItem::where('order_id', $order->id)->get() as $orderItem) {
+                    $line = $lineByOrderItem->get($orderItem->id);
+                    $orderItem->update([
+                        'line_subtotal' => $line['line_subtotal'] ?? 0,
+                        'line_discount_amount' => $line['line_discount_amount'] ?? 0,
+                    ]);
+                }
+
+                $allReturned = OrderItem::where('order_id', $order->id)
+                    ->whereColumn('returned_quantity', '<', 'quantity')
+                    ->doesntExist();
+
+                $order->update([
+                    'subtotal' => $priced['subtotal'],
+                    'discount_type' => $priced['discount_type'],
+                    'discount_amount' => $priced['discount_amount'],
+                    'total' => $priced['total'],
+                    'status' => $allReturned ? 'returned' : $order->status,
+                ]);
+            });
+        } catch (RuntimeException) {
+            return $this->error('Inventory changed while processing this return, please try again.', 409);
+        }
+
+        $order->refresh()->load(['items.allocations.store']);
+
+        return $this->success([
+            'id' => $order->id,
+            ...$this->formatOrderSummary($order),
+            'items' => $this->formatOrderItems($order),
+        ], 'Return processed');
     }
 }

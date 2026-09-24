@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['order_id', 'product_id', 'product_name', 'unit_price', 'quantity', 'line_subtotal', 'line_discount_amount'])]
+#[Fillable(['order_id', 'product_id', 'product_name', 'unit_price', 'quantity', 'returned_quantity', 'line_subtotal', 'line_discount_amount'])]
 class OrderItem extends Model
 {
     protected function casts(): array
@@ -35,5 +35,18 @@ class OrderItem extends Model
     public function allocations(): HasMany
     {
         return $this->hasMany(OrderItemAllocation::class);
+    }
+
+    /**
+     * @return HasMany<OrderItemDiscountTier, $this>
+     */
+    public function discountTiers(): HasMany
+    {
+        return $this->hasMany(OrderItemDiscountTier::class);
+    }
+
+    public function remainingQuantity(): int
+    {
+        return $this->quantity - $this->returned_quantity;
     }
 }

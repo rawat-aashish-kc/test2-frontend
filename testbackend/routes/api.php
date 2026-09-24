@@ -53,4 +53,5 @@ Route::middleware(['auth:sanctum', 'role:customer'])->group(function () {
     Route::get('orders', [OrderController::class, 'index']);
     Route::post('orders', [OrderController::class, 'store']);
     Route::get('orders/{order}', [OrderController::class, 'show']);
+    Route::post('orders/{order}/returns', [OrderController::class, 'returns']);
 });

@@ -17,12 +17,7 @@ class OrderController extends Controller
         $orders = Order::with('user:id,name')->latest()->get()->map(fn (Order $order) => [
             'id' => $order->id,
             'customer_name' => $order->user->name,
-            'subtotal' => (float) $order->subtotal,
-            'discount_type' => $order->discount_type,
-            'discount_amount' => (float) $order->discount_amount,
-            'total' => (float) $order->total,
-            'status' => $order->status,
-            'created_at' => $order->created_at,
+            ...$this->formatOrderSummary($order),
         ]);
 
         return $this->success($orders);

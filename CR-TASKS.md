@@ -51,24 +51,24 @@ evaluated against the discount tiers **as they were when the order was placed** 
   transactional — same discipline as the order-placement race-safety, 409 on conflict).
 
 ## Backend work
-- [ ] Migrations: `orders.original_total`; `order_items.returned_quantity`;
+- [x] Migrations: `orders.original_total`; `order_items.returned_quantity`;
       `order_item_allocations.returned_quantity`; new `order_item_discount_tiers`
       (order_item_id, min_quantity, discount_percent); new `order_platform_discount_tiers`
       (order_id, min_order_amount, discount_percent).
-- [ ] Order placement (`POST /orders`) additionally snapshots the currently-active
+- [x] Order placement (`POST /orders`) additionally snapshots the currently-active
       product discount tiers (per product in the cart) and platform discount tiers into
       the new snapshot tables — this is what makes order-time recalculation possible.
-- [ ] `OrderPricer` service (mirrors `CartPricer`): builds calculator input from an
+- [x] `OrderPricer` service (mirrors `CartPricer`): builds calculator input from an
       order's remaining quantities + its own tier snapshots + its current `discount_type`
       as the resolve() preference; returns the same shape `CartPricer` does.
-- [ ] `POST /orders/{order}/returns` — validate, restore inventory per allocation
+- [x] `POST /orders/{order}/returns` — validate, restore inventory per allocation
       (row-locked), update `returned_quantity` counters, recalculate via `OrderPricer`,
       update `order_items.line_subtotal`/`line_discount_amount` and the order's
       `subtotal`/`discount_type`/`discount_amount`/`total`, set `status = "returned"` when
       every line is fully returned. One transaction.
-- [ ] `GET /orders`, `GET /orders/{id}`, admin `GET /admin/orders/{id}` responses gain
+- [x] `GET /orders`, `GET /orders/{id}`, admin `GET /admin/orders/{id}` responses gain
       `original_total`, `refund_amount`, and `order_items[].returned_quantity`.
-- [ ] Seeder: place (or seed directly) a demo multi-store order on the demo customer so a
+- [x] Seeder: place (or seed directly) a demo multi-store order on the demo customer so a
       return can be tested by hand without placing one manually first.
 
 ## Frontend work (after backend verified — new UI must match the current redesign, not the
@@ -79,6 +79,6 @@ old styling)
 ## Docs
 - [x] SCHEMA.md updated (this pass).
 - [x] CONTRACT.md updated (this pass).
-- [ ] ASSUMPTIONS.md — defaults #14–#19 (allocation-order restock, order-time tiers,
+- [x] ASSUMPTIONS.md — defaults #14–#19 (allocation-order restock, order-time tiers,
       preference-carries-forward on recalculation, no partial-return status, no separate
       returns/audit table — cumulative counters are enough for every stated requirement).

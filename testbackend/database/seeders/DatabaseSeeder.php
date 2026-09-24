@@ -2,12 +2,15 @@
 
 namespace Database\Seeders;
 
+use App\Models\Cart;
+use App\Models\CartItem;
 use App\Models\Inventory;
 use App\Models\PlatformDiscount;
 use App\Models\Product;
 use App\Models\ProductDiscount;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\OrderPlacer;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -80,6 +83,15 @@ class DatabaseSeeder extends Seeder
 
         // Order-level discount — mutually exclusive with product discounts (see CONTRACT.md).
         PlatformDiscount::create(['min_order_amount' => 150, 'discount_percent' => 10]);
+
+        // A real, already-placed demo order (6 keyboards, split Downtown(3)+Midtown(3) since
+        // no single store alone had 6) so a return can be tested by hand immediately, without
+        // placing an order first. Subtotal $270 qualifies for both discounts; product (15%
+        // = $40.50) beats platform (10% = $27), so it's what applied — returning down below
+        // the keyboard's 3-unit tier demonstrates the discount dropping on recalculation.
+        $cart = Cart::create(['user_id' => $customer->id]);
+        CartItem::create(['cart_id' => $cart->id, 'product_id' => $keyboard->id, 'quantity' => 6]);
+        OrderPlacer::place($customer, $customer->lat, $customer->lng);
 
         $this->command->info('Seeded demo data. Login credentials:');
         $this->command->info("  Admin:    email={$admin->email} password={$adminPassword}");
