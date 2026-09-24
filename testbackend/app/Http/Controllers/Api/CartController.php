@@ -29,9 +29,10 @@ class CartController extends Controller
         $product = Product::findOrFail($request->validated('product_id'));
 
         $existing = $cart->items()->where('product_id', $product->id)->first();
-        $newQuantity = ($existing?->quantity ?? 0) + $request->validated('quantity');
+        $alreadyInCart = $existing?->quantity ?? 0;
+        $newQuantity = $alreadyInCart + $request->validated('quantity');
 
-        $this->assertStockAvailable($product, $newQuantity);
+        $this->assertStockAvailable($product, $newQuantity, $alreadyInCart);
 
         CartItem::updateOrCreate(
             ['cart_id' => $cart->id, 'product_id' => $product->id],
@@ -66,14 +67,17 @@ class CartController extends Controller
         return Cart::firstOrCreate(['user_id' => $request->user()->id]);
     }
 
-    private function assertStockAvailable(Product $product, int $requestedQuantity): void
+    private function assertStockAvailable(Product $product, int $requestedQuantity, int $alreadyInCart = 0): void
     {
         $available = $product->availableQuantity();
 
         if ($requestedQuantity > $available) {
-            throw ValidationException::withMessages([
-                'quantity' => ["Only {$available} in stock for {$product->name}"],
-            ]);
+            $message = "Only {$available} in stock for {$product->name}";
+            if ($alreadyInCart > 0) {
+                $message .= " ({$alreadyInCart} already in your cart)";
+            }
+
+            throw ValidationException::withMessages(['quantity' => [$message]]);
         }
     }
 
