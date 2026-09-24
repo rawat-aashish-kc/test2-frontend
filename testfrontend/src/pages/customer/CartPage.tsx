@@ -16,6 +16,7 @@ export function CartPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [savingId, setSavingId] = useState<number | null>(null)
+  const [choosingDiscount, setChoosingDiscount] = useState(false)
   const navigate = useNavigate()
 
   function load() {
@@ -52,6 +53,19 @@ export function CartPage() {
       setQuantities(quantitiesFromCart(updated))
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Server error, please try again')
+    }
+  }
+
+  async function chooseDiscount(discountType: 'product' | 'platform') {
+    setError(null)
+    setChoosingDiscount(true)
+    try {
+      const updated = await api.put<Cart>('/cart/discount-choice', { discount_type: discountType })
+      setCart(updated)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Server error, please try again')
+    } finally {
+      setChoosingDiscount(false)
     }
   }
 
@@ -127,6 +141,32 @@ export function CartPage() {
                 })}
               </tbody>
             </table>
+
+            {cart.discount_options.product.available && cart.discount_options.platform.available && (
+              <div className="discount-picker">
+                <span className="discount-picker-label">Product and platform discounts can't combine — choose one:</span>
+                <label>
+                  <input
+                    type="radio"
+                    name="discount-choice"
+                    checked={cart.discount_type === 'product'}
+                    disabled={choosingDiscount}
+                    onChange={() => chooseDiscount('product')}
+                  />
+                  Product discount (-{money(cart.discount_options.product.amount)})
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="discount-choice"
+                    checked={cart.discount_type === 'platform'}
+                    disabled={choosingDiscount}
+                    onChange={() => chooseDiscount('platform')}
+                  />
+                  Platform discount (-{money(cart.discount_options.platform.amount)})
+                </label>
+              </div>
+            )}
 
             <div className="totals">
               <div className="line">

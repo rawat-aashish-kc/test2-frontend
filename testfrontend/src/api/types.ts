@@ -72,12 +72,21 @@ export interface CartItem {
   line_subtotal: number
 }
 
+export interface DiscountOption {
+  available: boolean
+  amount: number
+}
+
 export interface Cart {
   items: CartItem[]
   subtotal: number
   discount_type: DiscountType
   discount_amount: number
   total: number
+  discount_options: {
+    product: DiscountOption
+    platform: DiscountOption
+  }
 }
 
 export interface OrderAllocation {
