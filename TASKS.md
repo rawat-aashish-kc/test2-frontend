@@ -66,10 +66,10 @@ nothing is left anywhere — no oversell (row lock on inventory).
 
 Backend core logic (no HTTP yet — pure PHP/unit-testable, riskiest)
 1. [ ] Migrations + models for all tables in SCHEMA.md. Done when: `php artisan migrate` runs clean.
-2. [ ] `DiscountCalculator` service: given cart lines + active discount rules, returns
+2. [x] `DiscountCalculator` service: given cart lines + active discount rules, returns
    {discount_type, discount_amount, per-line discounts} per the CONTRACT.md rule. Done when:
    unit tests for all 4 discount test cases above pass.
-3. [ ] `StoreAllocator` service: given product + qty + customer lat/lng, returns per-store
+3. [x] `StoreAllocator` service: given product + qty + customer lat/lng, returns per-store
    allocation list using Haversine distance. Done when: unit tests for single-store,
    multi-store-split and insufficient-stock cases above pass.
 
