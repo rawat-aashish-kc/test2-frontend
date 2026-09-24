@@ -1,47 +1,84 @@
-# CR-TASKS.md — customer picks the discount, not auto-applied
+# CR-TASKS.md — Product Return
 
 ## What changes
-- When a cart qualifies for BOTH a product discount and a platform discount, the
-  customer picks which one applies (was: system silently picked the larger).
-- When only one applies, it's still applied automatically (nothing to choose).
-- Choice persists on the cart until changed or the cart is emptied by placing an order.
-- Order placement uses whatever was chosen at that moment (same as before, just
-  resolved from the stored choice instead of "always pick larger").
+Customer can return part or all of a placed order. Returned quantity goes back to the
+exact store(s) that fulfilled it. The order's discount is recalculated from scratch on
+what's left, using the same product-vs-platform "never combine" rule as checkout — but
+evaluated against the discount tiers **as they were when the order was placed** (decided:
+"Order-time tiers", see ASSUMPTIONS.md #14), not whatever tiers are configured today.
 
-## What must keep working
-- Product-and-platform-never-combine rule (still true — the choice just says *which
-  one*, not both).
-- Multi-tier "highest qualifying tier wins" logic, unchanged.
-- All existing DiscountCalculator/StoreAllocator unit test *scenarios* (single-tier,
-  multi-tier, insufficient stock, single/multi-store split) — math must be identical,
-  only the "both qualify" case becomes user-controlled instead of auto-max.
-- Cart/order response shape stays additive (new fields only), so nothing existing
-  breaks: `discount_type`/`discount_amount`/`total`/`line_discount_amount` mean the
-  same thing, just reflect the resolved choice instead of an auto-max.
+## Requirement → contract map
+1. "Customer can return products from an existing order" → `POST /orders/{order}/returns`
+   (auth + role:customer, own order only — 404 otherwise, same pattern as GET /orders/{id}).
+2. "Returned quantity is added back to the store inventory, specifically to the store it
+   was fulfilled from" → walk each returned line's `order_item_allocations` (original
+   fulfillment order), increment `inventories.quantity` at each store, cap at what that
+   store actually supplied (`order_item_allocations.returned_quantity` tracks this,
+   ASSUMPTIONS.md #16).
+3. "Order recalculates its discount... if remaining quantity no longer meets a product
+   quantity discount, it no longer applies... if remaining order amount no longer meets
+   the platform discount condition, it no longer applies... stay mutually exclusive" →
+   `OrderPricer` (new, mirrors `CartPricer`) re-runs `DiscountCalculator::calculate()` +
+   `resolve()` — the same pure functions used at checkout — over the order's *remaining*
+   quantities, fed from the order-time tier snapshots (new tables, see SCHEMA.md).
+4. "Customer sees the updated order amount" → `GET /orders/{id}` (existing endpoint)
+   response gains `original_total` (immutable, set at placement) and `refund_amount`
+   (`original_total - total`, always current); each order item gains `returned_quantity`.
+5. "Order and inventory state must be correct" → the whole return (inventory increments +
+   order/order_item recalculation) runs in one DB transaction with row locks, mirroring
+   how order placement already does it (decrement → increment, same discipline).
 
-## Backend
-- [x] Migration: `carts.discount_choice` nullable enum('product','platform').
-- [x] `DiscountCalculator::calculate()` now returns raw `product_discount_total` /
-      `platform_discount_total` (no longer picks a winner itself).
-- [x] `DiscountCalculator::resolve(productTotal, platformTotal, ?preference)` — pure,
-      unit-tested: none/product-only/platform-only/both-with-valid-preference/
-      both-with-no-or-invalid-preference (defaults to the larger, old behavior as
-      fallback).
-- [x] `CartPricer` calls calculate() + resolve(), builds the final priced shape
-      (`discount_options.product/.platform.{available,amount}` + resolved
-      discount_type/amount/lines), used by both cart preview and order placement.
-- [x] `PUT /cart/discount-choice {discount_type}` — validates the choice is currently
-      available, stores it, returns the repriced cart. 422 if not available.
-- [x] Order placement clears `discount_choice` (along with cart items) after placing,
-      so the next cart starts fresh.
+## Test cases → concrete scenarios (write as tests in TASKS.md once implementation starts)
+- Multi-store order line (e.g. 3 from Store A + 7 from Store B): returning 5 restores 3 to
+  A and 2 to B (original allocation order first, per-allocation cap — ASSUMPTIONS.md #16).
+- Returning more than was ordered, or more than what's still remaining after an earlier
+  partial return, is rejected 422 with a specific message ("Only 4 of Widget remaining to
+  return, 6 requested"), nothing written.
+- A line drops below its product-discount tier's `min_quantity` after a return → that
+  line's discount is removed on recalculation (or drops to a lower qualifying tier if one
+  still applies, evaluated fresh — not just "does the original tier still apply").
+- Order subtotal drops below the platform discount's `min_order_amount` after a return →
+  platform discount removed on recalculation.
+- Both a product and a platform discount still qualify post-return → still mutually
+  exclusive; the order's existing `discount_type` is kept if it still qualifies
+  (preserves the customer's original cart choice), else falls back automatically
+  (ASSUMPTIONS.md #15).
+- Two separate partial returns on the same order, then a third that empties every line →
+  cumulative `returned_quantity` tracked correctly at every step; order status becomes
+  `returned` only once every line's remaining quantity is 0.
+- A return admin/customer places right after another (two requests close together) does
+  not let `returned_quantity` exceed `quantity` on any line or allocation (row-locked,
+  transactional — same discipline as the order-placement race-safety, 409 on conflict).
 
-## Frontend
-- [x] `Cart` type: `discount_options`.
-- [x] `api/client`: `PUT /cart/discount-choice`.
-- [x] Cart page: when both options are available, show a picker (radio) with each
-      option's amount; hidden when only one or neither applies (unchanged UI then).
+## Backend work
+- [ ] Migrations: `orders.original_total`; `order_items.returned_quantity`;
+      `order_item_allocations.returned_quantity`; new `order_item_discount_tiers`
+      (order_item_id, min_quantity, discount_percent); new `order_platform_discount_tiers`
+      (order_id, min_order_amount, discount_percent).
+- [ ] Order placement (`POST /orders`) additionally snapshots the currently-active
+      product discount tiers (per product in the cart) and platform discount tiers into
+      the new snapshot tables — this is what makes order-time recalculation possible.
+- [ ] `OrderPricer` service (mirrors `CartPricer`): builds calculator input from an
+      order's remaining quantities + its own tier snapshots + its current `discount_type`
+      as the resolve() preference; returns the same shape `CartPricer` does.
+- [ ] `POST /orders/{order}/returns` — validate, restore inventory per allocation
+      (row-locked), update `returned_quantity` counters, recalculate via `OrderPricer`,
+      update `order_items.line_subtotal`/`line_discount_amount` and the order's
+      `subtotal`/`discount_type`/`discount_amount`/`total`, set `status = "returned"` when
+      every line is fully returned. One transaction.
+- [ ] `GET /orders`, `GET /orders/{id}`, admin `GET /admin/orders/{id}` responses gain
+      `original_total`, `refund_amount`, and `order_items[].returned_quantity`.
+- [ ] Seeder: place (or seed directly) a demo multi-store order on the demo customer so a
+      return can be tested by hand without placing one manually first.
+
+## Frontend work (after backend verified — new UI must match the current redesign, not the
+old styling)
+- [ ] Customer order detail page: a "Return" control per line (quantity input capped at
+      remaining, per line), shows `refund_amount`/`original_total` after a return.
 
 ## Docs
-- [x] CONTRACT.md discount rule rewritten; new endpoint documented.
-- [x] ASSUMPTIONS.md #7 updated (was: auto-pick larger; now: user picks, larger is
-      just the default when neither has been chosen yet).
+- [x] SCHEMA.md updated (this pass).
+- [x] CONTRACT.md updated (this pass).
+- [ ] ASSUMPTIONS.md — defaults #14–#19 (allocation-order restock, order-time tiers,
+      preference-carries-forward on recalculation, no partial-return status, no separate
+      returns/audit table — cumulative counters are enough for every stated requirement).

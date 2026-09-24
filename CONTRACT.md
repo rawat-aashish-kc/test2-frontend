@@ -57,8 +57,12 @@ Body: `{email, password}`
 - DELETE `/admin/platform-discounts/{id}` → sets `is_active=false` → 200 `{data:null}`
 
 ## Admin — Orders (`/admin/orders`, auth + role:admin)
-- GET `/admin/orders` → 200 `{data:[{id, customer_name, subtotal, discount_type, discount_amount, total, status, created_at}]}`
-- GET `/admin/orders/{id}` → 200 `{data:{...order, items:[{product_name, unit_price, quantity, line_subtotal, line_discount_amount, allocations:[{store_name, quantity, distance_km}]}]}}` / 404
+- GET `/admin/orders` → 200 `{data:[{id, customer_name, subtotal, discount_type, discount_amount, total, original_total, refund_amount, status, created_at}]}`
+- GET `/admin/orders/{id}` → 200 `{data:{...order, items:[{product_id, product_name, unit_price, quantity, returned_quantity, line_subtotal, line_discount_amount, allocations:[{store_name, quantity, returned_quantity, distance_km}]}]}}` / 404
+  (`quantity`/allocation `quantity` are the *original* amounts and never change;
+  `returned_quantity` is cumulative; `line_subtotal`/`line_discount_amount`/order totals
+  are *current* — i.e. already reflect any returns. `refund_amount = original_total - total`.
+  Read-only — admin cannot process a return, see Customer — Orders below)
 
 ## Customer — Products (`/products`, auth + role:customer)
 - GET `/products` → 200 `{data:[{id,name,description,price,available_quantity, discount_tiers:[{min_quantity,discount_percent}]}]}`
@@ -85,14 +89,63 @@ Body: `{email, password}`
 ## Customer — Orders (`/orders`, auth + role:customer)
 - POST `/orders` → places order from the customer's current cart, using the customer's
   saved `lat`/`lng`. Body: none (optionally `{lat, lng}` to override for this order).
-  - 200/201 `{data:{id, subtotal, discount_type, discount_amount, total, status, items:[...with allocations...]}}`
+  - 200/201 `{data:{id, subtotal, discount_type, discount_amount, total, original_total, status, items:[...with allocations...]}}`
   - 422 `{message:"Cart is empty"}` if no cart items
   - 422 `{message:"Only 3 of Widget available across all stores, 5 requested"}` if total stock
     (summed across all stores) can't cover a line's requested quantity — checked for every
     line before any inventory is touched (all-or-nothing)
-  - on success: cart is cleared, inventory decremented per allocation, all inside one DB transaction
-- GET `/orders` → 200 `{data:[{id, subtotal, discount_type, discount_amount, total, status, created_at}]}` (own orders only)
-- GET `/orders/{id}` → 200 `{data:{...order, items:[{product_name, unit_price, quantity, line_subtotal, line_discount_amount, allocations:[{store_name, quantity, distance_km}]}]}}` (own order only) / 404 if not owner or doesn't exist
+  - on success: cart is cleared, inventory decremented per allocation, `original_total` set
+    equal to `total` (immutable from here on), the currently-active product/platform
+    discount tiers are snapshotted for later returns (see Order recalculation rule) — all
+    inside one DB transaction
+- GET `/orders` → 200 `{data:[{id, subtotal, discount_type, discount_amount, total, original_total, refund_amount, status, created_at}]}` (own orders only)
+- GET `/orders/{id}` → 200 `{data:{...order, items:[{product_id, product_name, unit_price, quantity, returned_quantity, line_subtotal, line_discount_amount, allocations:[{store_name, quantity, returned_quantity, distance_km}]}]}}` (own order only) / 404 if not owner or doesn't exist
+  (same "original vs current" field meanings as the admin endpoint above)
+
+### POST /orders/{order}/returns — auth + role:customer, own order only (404 otherwise)
+Body: `{items: [{order_item_id, quantity}, ...]}` — one or more lines in a single return.
+- Validates every `order_item_id` belongs to this order and
+  `quantity ≤ (that line's quantity − returned_quantity)` for **all** lines before writing
+  anything (all-or-nothing, same discipline as order placement).
+  - 422 `{message:"Nothing to return"}` if `items` is empty
+  - 422 `{message:"Only 4 of Widget remaining to return, 6 requested"}` if any line's
+    requested return exceeds what's still kept
+  - 404 if the order isn't this customer's, or doesn't exist
+- On success, inside one DB transaction:
+  1. For each returned line, restore inventory to the store(s) that supplied it — walk its
+     `order_item_allocations` in their original (creation) order, restocking up to each
+     allocation's remaining (`quantity − returned_quantity`) until the line's return
+     quantity is covered; increments each allocation's `returned_quantity` and the
+     corresponding `inventories.quantity`, row-locked (same race-safety pattern as order
+     placement's decrement — 409 `{message:"Inventory changed while processing this return, please try again."}` on a detected conflict).
+  2. Increments each returned line's `order_items.returned_quantity`.
+  3. Recalculates the **whole order** from its remaining quantities per the Order
+     recalculation rule below, overwriting `order_items.line_subtotal`/
+     `line_discount_amount` and `orders.subtotal`/`discount_type`/`discount_amount`/`total`.
+     `original_total` is never touched.
+  4. If every line's remaining quantity (`quantity − returned_quantity`) is now 0,
+     `orders.status = "returned"`.
+  - 200 `{data:{...order, items:[...], refund_amount}}` (same detail shape as `GET /orders/{id}`)
+
+## Order recalculation rule (POST /orders/{order}/returns — the return-time counterpart of
+the Discount calculation rule further below, using the order's own tier snapshots instead
+of live discount tables, since discount tiers can change after an order is placed)
+1. For each order item, `remaining_quantity = quantity − returned_quantity`. Lines with
+   `remaining_quantity = 0` contribute 0 to everything below.
+2. `product_discount_total` = for each line, find the highest `min_quantity` tier in that
+   line's own `order_item_discount_tiers` (its order-time snapshot) that
+   `remaining_quantity` still meets; if found, `line_discount = unit_price ×
+   remaining_quantity × discount_percent / 100`; sum across lines. Exactly the tier-choice
+   logic from step 1 of the Discount calculation rule, just re-run against the smaller
+   quantity and the frozen tier set.
+3. `platform_discount_total` = highest `min_order_amount` tier in this order's own
+   `order_platform_discount_tiers` that the new subtotal (`Σ unit_price × remaining_quantity`)
+   still meets; same math as step 2 of the Discount calculation rule.
+4. Resolve exactly like step 3 of the Discount calculation rule, **except** the preference
+   fed in is the order's *own current* `discount_type` (not a stored cart choice) — so if
+   what the order already had still qualifies, it's kept; otherwise resolve() falls
+   through the same way it does the first time a cart has no preference yet.
+5. `refund_amount = original_total − total` (always current, never separately stored).
 
 ## Discount calculation rule (applies in GET/POST/PUT/DELETE /cart/* and POST /orders — must match exactly)
 1. `product_discount_total` = for each cart line, find the product's active discount tier
